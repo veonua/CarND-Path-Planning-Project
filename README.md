@@ -1,5 +1,25 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
+
+###Introduction
+The program main.cpp allows to generate a path for a car in a simulator. The path will seek to avoid collisions, change lanes when the current lane is too slow and avoid sudden acceleratoin, breaking and jerks.
+
+Below follows an explanation of how the paths are generated.
+
+##Path planner
+path policy is simple for this kind of task: the main goal is to keep lane and keep lane velocity
+
+We are using Frenet coordinates and spline.h to keep lane in the simulator. This part is fairly easy and described in QA video by Udacity
+It is also mostly eliminates jerk.
+
+To iterate faster I increased acceleration of the car to max 4m/s, it also helps to avoid rear end collisions for most of situations
+
+
+If the lane velocity is less than max allowed (there is a car in front of us going slower than 49.5 mph)
+ algorithm starts to look alternative lanes to proceed, the main goal here is safety. At this moment lane considered as safe if there is no cars 15 meters back and 30 meters in front of us.
+ see method (_estimate_switch_)
+
+----------
    
 ### Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
