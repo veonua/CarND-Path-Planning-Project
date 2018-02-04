@@ -164,31 +164,30 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
-bool estimate_switch(bool lane_switch, vector<vector<double>> sensor_fusion, int p_lane, int prev_size, double car_s)
-{
-	for (int i = 0; i < sensor_fusion.size(); i++)
-	{
-		float d = sensor_fusion[i][6];
+bool estimate_switch(vector<vector<double>> sensor_fusion, int p_lane, int prev_size, double car_s) {
+    for (auto &i : sensor_fusion) {
+        auto d = i[6];
 		if (d < (2 + 4 * (p_lane) + 2) && d > (2 + 4 * (p_lane) - 2))
 		{
-			double vx = sensor_fusion[i][3];
-			double vy = sensor_fusion[i][4];
+            double vx = i[3];
+            double vy = i[4];
 			double check_speed = sqrt(vx * vx + vy * vy);
-			double check_car_s = sensor_fusion[i][5];
+            double check_car_s = i[5];
 
 			check_car_s += ((double)prev_size * .02 * check_speed);
 
 			// Check for s-gap and set lane_switch
-			//if ((check_car_s - car_s) < 30)
-			if((check_car_s > car_s) && ((check_car_s-car_s) < 30))
+            auto dd = check_car_s - car_s;
+            if (dd > -15 && dd < 30)
 			{
-				lane_switch = false;
-				break;
+                return false;
 			}
 		}
 	}
-	return lane_switch;
+    return true;
 }
+
+#define acceleration .424 //.224
 
 int main() {
   uWS::Hub h;
@@ -243,10 +242,10 @@ int main() {
     //cout << sdata << endl;
     if (length && length > 2 && data[0] == '4' && data[1] == '2') {
 
-      auto s = hasData(data);
+        auto sstr = hasData(data);
 
-      if (s != "") {
-        auto j = json::parse(s);
+        if (sstr != "") {
+            auto j = json::parse(sstr);
 
         string event = j[0].get<string>();
 
@@ -281,15 +280,15 @@ int main() {
 					bool too_close = false;
 
 					// find ref_v to use
-					for (auto &i : sensor_fusion) {
+            for (auto &sensor : sensor_fusion) {
 						// car is in my lane
-						float d = i[6];
+                auto d = sensor[6];
 						if(d < (2+4*lane+2) && d > (2+4*lane-2))
 						{
-							double vx = i[3];
-							double vy = i[4];
+                            double vx = sensor[3];
+                            double vy = sensor[4];
 							double check_speed = sqrt(vx*vx+vy*vy);
-							double check_car_s = i[5];
+                            double check_car_s = sensor[5];
 
 							check_car_s += ((double)prev_size*.02*check_speed); //if using previous points can project s value out
 							// check s values greater than mine and s gap
@@ -297,8 +296,9 @@ int main() {
 							{
 								// Do some logic here, lower reference velocity so we dont crash into car in front of us, could
 								// also flag to try to change the lanes.
-								// ref_vel = 29.5; //mph
-								too_close = true;
+                                //ref_vel = check_speed; //29.5; //mph
+                                too_close = true;
+                                break;
 							}
 						}
 					}
@@ -306,45 +306,49 @@ int main() {
 					// Check for lane switch if car is too close in current lane.
 					if(too_close)
 					{
-						ref_vel -= .224;
-						bool lane_switch = true;
-						if(ref_vel < 40 && lane == 0) // Check in left lane.
+                        //ref_vel -= acceleration;
+                        bool lane_switch = false;
+                        if (lane == 0) // Check in left lane.
 						{
-							lane_switch = estimate_switch(lane_switch, sensor_fusion, lane+1, prev_size, car_s); // Check if lane change is safe
+                            lane_switch = estimate_switch(sensor_fusion, lane + 1, prev_size, car_s);
 							if(lane_switch)
 							{
 								lane+=1; // Switch to mid lane.
 							}
-						}
-						else if(ref_vel < 40 && lane == 2) // Check in right lane.
+						} else if (lane == 2) // Check in right lane.
 						{
-							lane_switch = estimate_switch(lane_switch, sensor_fusion, lane-1, prev_size, car_s); // Check if lane change is safe
+                            lane_switch = estimate_switch(sensor_fusion, lane - 1, prev_size, car_s);
 							if(lane_switch)
 							{
 								lane-=1; // Switch to mid lane.
 							}
-						}
-						else if(ref_vel < 40 && lane == 1) // Check in mid lane.
+						} else if (lane == 1) // Check in mid lane.
 						{
-							lane_switch = estimate_switch(lane_switch, sensor_fusion, lane+1, prev_size, car_s); // Check if lane change is safe
+                            lane_switch = estimate_switch(sensor_fusion, lane + 1, prev_size, car_s);
 							if(lane_switch)
 							{
 								lane+=1; // Switch to right lane.
 							}
 							else
 							{
-								lane_switch = estimate_switch(lane_switch, sensor_fusion, lane-1, prev_size, car_s); // Check if lane change is safe
+                                lane_switch = estimate_switch(sensor_fusion, lane - 1, prev_size, car_s);
 								if(lane_switch)
 								{
 									lane-=1; // Switch to left lane.
 								}
 							}
 						}
+
+                        if (!lane_switch) {
+                            ref_vel -= acceleration / 3.0;
+                        }
+
 						std::cout << "Lane " << lane << ", Lane Switch = " << lane_switch << ", Velocity = " << ref_vel << std::endl;
 					}
 					else
 					{
-						ref_vel = min(ref_vel+.224, 49.5); //Incrase the speed gradually upto 49.5 in case no vehicle in front.
+                        ref_vel = min(ref_vel + acceleration,
+                                      49.5); //Incrase the speed gradually upto 49.5 in case no vehicle in front.
 					}
 
 					// Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
@@ -363,8 +367,8 @@ int main() {
 					if(prev_size < 2)
 					{
 						// Use two points that makes the path tangent to the car
-						double prev_car_x = car_x - cos(car_yaw);
-						double prev_car_y = car_y - sin(car_yaw);
+                        double prev_car_x = car_x - abs(cos(car_yaw));
+                        double prev_car_y = car_y - abs(sin(car_yaw));
 
 						ptsx.push_back(prev_car_x);
 						ptsx.push_back(car_x);
